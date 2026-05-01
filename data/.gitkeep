@@ -1,0 +1,5 @@
+# This directory stores state between runs.
+# state.json       — last known hash, version number, timestamps
+# previous.docx    — last confirmed version of the document
+# change_log.json  — cumulative log of all detected changes
+# current.docx     — excluded from git (temp download, see .gitignore)

@@ -1,0 +1,59 @@
+name: Document Change Monitor
+
+on:
+  schedule:
+    # Runs every Monday at 8:00 AM UTC (midnight Pacific / 1 AM Mountain)
+    # Adjust the cron expression as needed:
+    #   Daily at 8am UTC:    "0 8 * * *"
+    #   Weekdays at 8am UTC: "0 8 * * 1-5"
+    #   Every Monday:        "0 8 * * 1"
+    #   Twice weekly:        "0 8 * * 1,4"
+    - cron: "0 8 * * 1"
+
+  # Allow manual trigger from the GitHub Actions UI
+  workflow_dispatch:
+
+jobs:
+  check-document:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Check out the repo (includes stored state + previous doc) ──────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 2. Install system deps ────────────────────────────────────────────
+      - name: Install pandoc
+        run: sudo apt-get install -y pandoc
+
+      # ── 3. Set up Python ─────────────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install requests anthropic python-docx
+
+      # ── 4. Run the monitor ───────────────────────────────────────────────
+      - name: Run document monitor
+        env:
+          DOC_URL:           ${{ secrets.DOC_URL }}
+          EMAIL_SENDER:      ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD:    ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECIPIENTS:  ${{ secrets.EMAIL_RECIPIENTS }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DOC_NAME:          ${{ secrets.DOC_NAME }}
+        run: python scripts/monitor.py
+
+      # ── 5. Commit updated state back to repo ─────────────────────────────
+      #       (stores state.json, change_log.json, and previous.docx)
+      - name: Commit state changes
+        run: |
+          git config user.name  "doc-monitor[bot]"
+          git config user.email "doc-monitor@users.noreply.github.com"
+          git add data/
+          git diff --staged --quiet || git commit -m "chore: update document state [$(date -u '+%Y-%m-%d')]"
+          git push

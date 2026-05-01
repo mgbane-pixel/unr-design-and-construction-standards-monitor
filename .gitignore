@@ -1,0 +1,5 @@
+# Keep the data directory structure but ignore temp downloads
+data/current.docx
+*.pyc
+__pycache__/
+.env
