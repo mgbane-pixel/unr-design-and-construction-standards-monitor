@@ -148,9 +148,6 @@
 
 
 
-
-
-
 <!-- Start Site Navigation -->
 <nav class="nav nav-site" aria-label="Site Navigation">
     <!--KS navigation container-->
@@ -1286,9 +1283,6 @@
 
     <!-- End Render Section Scripts-->
 
-        <!-- Start Render Effect Background Scripts-->
-        <script type="text/javascript" src="/Assets/Scripts/Custom/Effects/EffectBackground.js"></script>
-        <!-- End Render Effect Background Scripts-->
 
     <!--Start Schema.org section-->
     
