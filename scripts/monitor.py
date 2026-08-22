@@ -56,6 +56,42 @@ def file_hash(path: Path) -> str:
     h.update(path.read_bytes())
     return h.hexdigest()
 
+def resolve_docx_url(page_url: str) -> str:
+    """
+    Scrape the UNR facilities page and return the actual .docx or Box.com
+    download link found on it. Falls back to page_url itself if it already
+    looks like a direct file link.
+    """
+    if page_url.lower().endswith(".docx") or "box.com" in page_url:
+        print("  DOC_URL looks like a direct file link — using as-is.")
+        return page_url
+
+    print(f"  Scraping page for document link: {page_url}")
+    try:
+        import re
+        r = requests.get(page_url, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+        r.raise_for_status()
+
+        docx_links = re.findall(r'href=["\']([^"\']*\.docx[^"\']*)["\']', r.text, re.IGNORECASE)
+        box_links  = re.findall(r'href=["\']([^"\']*box\.com/s/[^"\']+)["\']', r.text, re.IGNORECASE)
+
+        if docx_links:
+            link = docx_links[0]
+            if link.startswith("/"):
+                domain = urlparse(page_url)
+                link = f"{domain.scheme}://{domain.netloc}{link}"
+            print(f"  Found .docx link: {link}")
+            return link
+        elif box_links:
+            link = box_links[0]
+            print(f"  Found Box link: {link}")
+            return link
+        else:
+            print("  WARNING: No document link found on page — falling back to DOC_URL directly.")
+            return page_url
+    except Exception as e:
+        print(f"  WARNING: Could not scrape page ({e}) — falling back to DOC_URL directly.")
+        return page_url
 
 def download_doc(url: str, dest: Path) -> bool:
     """Download document. Returns True on success."""
@@ -383,7 +419,8 @@ def main():
 
     # Download current version
     print("\n→ Downloading document...")
-    if not download_doc(DOC_URL, CURR_DOC_PATH):
+    resolved_url = resolve_docx_url(DOC_URL)
+    if not download_doc(resolved_url, CURR_DOC_PATH):
         sys.exit(1)
 
     current_hash = file_hash(CURR_DOC_PATH)
