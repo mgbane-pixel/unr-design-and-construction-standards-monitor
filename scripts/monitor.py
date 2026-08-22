@@ -434,7 +434,5 @@ def main():
     save_state(state)
     print(f"\n✓ Done. Version {version} stored as new baseline.")
 
-    # Update to claude-sonnet-5
-
 if __name__ == "__main__":
     main()
