@@ -130,7 +130,7 @@ Return ONLY a JSON object with this exact structure (no markdown, no preamble):
 """
 
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-5",
         max_tokens=4000,
         messages=[{"role": "user", "content": prompt}]
     )
@@ -434,6 +434,7 @@ def main():
     save_state(state)
     print(f"\n✓ Done. Version {version} stored as new baseline.")
 
+    # Update to claude-sonnet-5
 
 if __name__ == "__main__":
     main()
