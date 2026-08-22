@@ -19,6 +19,7 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 import anthropic
+from urllib.parse import urlparse
 
 # ── Config (loaded from environment variables set in GitHub Actions secrets) ──
 DOC_URL         = os.environ["DOC_URL"]           # URL of the .docx to monitor
@@ -61,6 +62,18 @@ def download_doc(url: str, dest: Path) -> bool:
     try:
         r = requests.get(url, timeout=60, headers={"User-Agent": "Mozilla/5.0"})
         r.raise_for_status()
+
+        content_type = r.headers.get("Content-Type", "unknown")
+        domain = urlparse(url).netloc
+        print(f"  Source domain: {domain}")
+        print(f"  Content-Type:  {content_type}")
+
+        # A valid .docx is a zip archive — must start with the "PK" signature
+        if not r.content.startswith(b"PK"):
+            print("ERROR: Downloaded file is not a valid .docx (zip signature missing).")
+            print(f"  First 200 bytes: {r.content[:200]!r}")
+            return False
+
         dest.write_bytes(r.content)
         return True
     except Exception as e:
