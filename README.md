@@ -1,188 +1,67 @@
-# AAME Document Change Monitor
+# UNR Design and Construction Standards Monitor
 
-Automatically checks a `.docx` standards document for updates on a schedule, 
-uses Claude AI to produce a detailed engineering-focused change log, and emails 
-your team with a summary + full breakdown. The updated document is attached.
+Watches the [UNR Facilities Services design standards page](https://www.unr.edu/facilities/planning-and-construction/design-construction-standards) for a new document posting and emails a distribution list when it finds one.
 
----
+## How it works
 
-## How It Works
+The Design and Construction Standards document is hosted on Box behind a shared link that requires a signed-in session to download programmatically — there's no reliable way to pull the file itself in an unattended script. So instead of downloading and diffing the document, this tool:
 
-```
-GitHub Actions (weekly cron)
-  → Download .docx from URL
-  → Compare SHA-256 hash with stored previous version
-  → If changed: extract text from both, send to Claude for analysis
-  → Claude returns structured change log (impact level, section-by-section diff)
-  → Send HTML email with change log + new document attached
-  → Commit updated state back to repo (stores new baseline)
-```
+1. On a schedule, fetches the UNR standards page
+2. Scrapes out the current Box link and its label (e.g. "Design and Construction Standards: 10/31/2025")
+3. Compares that link against the last one it saw (stored in `data/state.json`)
+4. If it changed, emails the distribution list with the old link, the new link, and a pointer back to the UNR page
 
-State (previous document + change log) lives in the `data/` directory, 
-committed back to the repo after each run. No database needed.
+Someone on the list then opens the page, grabs both versions manually, and — if a written comparison is wanted — drops both files into a Claude conversation and asks for a section-by-section change summary. That step is manual by design; see [Manual comparison](#manual-comparison) below.
 
----
+## Setup
 
-## Setup (one-time, ~15 minutes)
+Six values are read from environment variables, set as GitHub Actions secrets under **Settings → Secrets and variables → Actions**:
 
-### Step 1: Create the GitHub Repository
+| Secret | Description |
+|---|---|
+| `DOC_URL` | The UNR standards webpage URL (not the Box link — the page the Box link lives on) |
+| `EMAIL_SENDER` | Gmail address the alert is sent from |
+| `EMAIL_PASSWORD` | Gmail [App Password](https://myaccount.google.com/apppasswords) for that address — not the account's real password |
+| `EMAIL_RECIPIENTS` | Comma-separated list of addresses to notify (e.g. `person1@aame.com,person2@aame.com`) |
+| `DOC_NAME` | Optional. Display name used in the email subject/body. Defaults to "Owner Standards Document" if not set |
 
-1. Go to [github.com](https://github.com) and sign in (create a free account if needed)
-2. Click **New repository**
-3. Name it `doc-monitor` (or anything you like), set to **Private**
-4. Do **not** initialize with README (you'll push these files)
-5. Click **Create repository**
+GitHub Secrets are write-only once saved — you can update them but not view the current value, so keep a note somewhere of who's on the recipient list before changing it.
 
-### Step 2: Push These Files
+## Schedule
 
-On your computer, open a terminal (or Git Bash on Windows):
+Runs on the cron schedule defined in `.github/workflows/monitor.yml`. Can also be triggered manually from the **Actions** tab via **Run workflow**, if that trigger is enabled in the workflow file.
 
-```bash
-cd path/to/this/folder   # wherever you unzipped these files
-git init
-git add .
-git commit -m "Initial commit"
-git remote add origin https://github.com/YOUR_USERNAME/doc-monitor.git
-git push -u origin main
-```
+## State
 
-### Step 3: Set Up Gmail App Password
-
-The monitor sends email via Gmail. You need an **App Password** (not your real password):
-
-1. Go to your Google Account → **Security**
-2. Enable **2-Step Verification** if not already on
-3. Search for **App passwords** (or go to myaccount.google.com/apppasswords)
-4. Create one: name it "Doc Monitor", select "Mail"
-5. Copy the 16-character password — you'll use it as `EMAIL_PASSWORD`
-
-### Step 4: Add GitHub Secrets
-
-In your GitHub repo, go to **Settings → Secrets and variables → Actions → New repository secret**
-
-Add each of the following:
-
-| Secret Name | Value | Example |
-|-------------|-------|---------|
-| `DOC_URL` | Direct download URL of the .docx file | `https://owner.gov/standards/design-standards.docx` |
-| `DOC_NAME` | Human-readable document name | `RTAA Design & Construction Standards` |
-| `EMAIL_SENDER` | Your Gmail address | `you@gmail.com` |
-| `EMAIL_PASSWORD` | Gmail App Password from Step 3 | `abcd efgh ijkl mnop` |
-| `EMAIL_RECIPIENTS` | Comma-separated recipient emails | `you@aame.com, colleague@aame.com` |
-| `ANTHROPIC_API_KEY` | Your Anthropic API key | `sk-ant-...` |
-
-**Getting an Anthropic API key:**
-- Go to [console.anthropic.com](https://console.anthropic.com)
-- Sign up / log in → API Keys → Create Key
-- Add a small credit (~$5 covers hundreds of checks)
-
-### Step 5: Run It Once to Set Baseline
-
-1. In your GitHub repo, go to **Actions**
-2. Click **Document Change Monitor** in the left sidebar
-3. Click **Run workflow** → **Run workflow**
-4. Watch the logs — first run stores the baseline, no email is sent
-5. Run it a second time to confirm it detects "no change" correctly
-
----
-
-## Configuration
-
-### Change the Check Schedule
-
-Edit `.github/workflows/monitor.yml`, find the `cron:` line:
-
-```yaml
-- cron: "0 8 * * 1"    # Every Monday at 8am UTC
-- cron: "0 8 * * 1-5"  # Weekdays at 8am UTC  
-- cron: "0 8 * * *"    # Daily at 8am UTC
-- cron: "0 8 * * 1,4"  # Monday + Thursday
-```
-
-UTC is 7 hours ahead of Mountain Time (8 hours during daylight saving).
-So `0 15 * * 1` = Monday at 8am Mountain (standard time).
-
-### Add More Documents
-
-Duplicate the workflow file and monitor script with different secret names 
-(e.g., `DOC_URL_2`, `DOC_NAME_2`) to monitor multiple documents.
-
-### Monitoring a Document Behind Login
-
-If the document URL requires authentication:
-- Check if there's a direct download token/link in the URL
-- Some systems provide a "share link" with an embedded token
-- For SharePoint: use the "direct link" with `download=1` parameter
-
----
-
-## File Structure
-
-```
-doc-monitor/
-├── .github/
-│   └── workflows/
-│       └── monitor.yml        ← Schedule + GitHub Actions config
-├── scripts/
-│   └── monitor.py             ← Main monitoring script
-├── data/
-│   ├── .gitkeep               ← Keeps directory in git
-│   ├── state.json             ← Created on first run (hash, version, dates)
-│   ├── previous.docx          ← Last confirmed version of the document
-│   └── change_log.json        ← Cumulative history of all detected changes
-├── requirements.txt
-├── .gitignore
-└── README.md
-```
-
----
-
-## Reading the Change Log
-
-`data/change_log.json` accumulates every detected change across all versions:
+`data/state.json` tracks the last-seen link and label:
 
 ```json
-[
-  {
-    "version": 2,
-    "detected_at": "2025-06-02 08:00 UTC",
-    "impact_level": "HIGH",
-    "executive_summary": "Section 4.3 updated pipe insulation requirements...",
-    "total_changes": 7,
-    "changes": [
-      {
-        "section": "4.3 Pipe Insulation",
-        "change_type": "MODIFIED",
-        "description": "Minimum insulation thickness for CHW supply increased",
-        "old_text": "1-inch minimum thickness for pipes ≤ 2\"",
-        "new_text": "1.5-inch minimum thickness for pipes ≤ 2\"",
-        "engineering_note": "Affects pipe insulation specs on all hydronic projects"
-      }
-    ]
-  }
-]
+{
+  "last_link": "https://nevada.box.com/s/...",
+  "last_label": "Design and Construction Standards: 10/31/2025",
+  "last_checked": "2026-08-22 18:31 UTC",
+  "last_changed": "2026-08-22 18:31 UTC"
+}
 ```
 
----
+The Action needs **read and write** permissions on the repo (Settings → Actions → General → Workflow permissions) so it can commit updates to this file after each run.
 
-## Cost
+The very first run after a schema or setup change stores a baseline silently and sends no email — that's expected, not a failure.
 
-- **GitHub Actions**: Free for private repos (2,000 minutes/month; each run ≈ 1-2 min)
-- **Claude API**: ~$0.01–0.05 per change detection (only charged when document changes)
-- **Gmail**: Free
-- **Total ongoing cost**: Effectively $0/month unless document changes very frequently
+## Manual comparison
 
----
+Once you have both `.docx` versions downloaded:
+
+1. Start a conversation with Claude
+2. Upload the previous and current versions
+3. Ask for a section-by-section change summary — flag what's new, deleted, or modified, and note anything that affects design or specification decisions
+
+This used to be automated end-to-end with the Anthropic API, but was cut when the Box download step stopped being reliable for unattended runs. The prompt and structure that used to drive the automated version worked well and can be reused conversationally.
 
 ## Troubleshooting
 
-**"Download failed"** — The URL may require login, have changed, or use a redirect.
-Test the URL in an incognito browser tab.
+**"Could not find the standards link on the page"** — UNR changed the page layout and the scrape regex in `check_for_page_change()` no longer matches. Check the page's current HTML structure and update the pattern in `scripts/monitor.py`.
 
-**"pandoc failed"** — Fallback (python-docx) will be used automatically.
+**No email on a run that should have found a change** — check `data/state.json` in the repo to confirm `last_link` actually updated on the previous run. If the workflow lacks write permissions, state changes won't persist between runs and every run will look like a change (or none, depending on the failure).
 
-**Email not received** — Check Gmail App Password, verify 2FA is on, check spam folder.
-
-**"No changes detected" but document updated** — Some owners update metadata without 
-changing content; the hash covers all bytes. If this is frequent, switch to 
-last-modified header checking (open an issue).
+**Gmail auth errors** — App Passwords can be revoked if 2FA settings change on the sending account. Regenerate one at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) and update the `EMAIL_PASSWORD` secret.
